@@ -4,7 +4,6 @@ from modules.agents.dcf_agent import DCFAgent
 from modules.agents.youtube_agent import YouTubeAgent
 from modules.fetchers.fmp_fetcher import FinancialModelingPrep
 from modules.deepseek import DeepSeek, DeepSeekModels
-from dotenv import load_dotenv
 import modules.key as keys
 import modules.logger as logger
 
@@ -36,12 +35,13 @@ def main():
             st.sidebar.error(f"❌ {key.description}")
 
     # Main tabs
-    tab1, tab2, tab3, tab4 = st.tabs(
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
         [
             "👔 CEO Evaluation",
             "💰 DCF Valuation",
             "🎥 YouTube Analysis",
             "📝 Manual Transcript",
+            "📊 Portfolio",
         ]
     )
 
@@ -255,6 +255,10 @@ def main():
     with tab3:
         st.header("YouTube Channel Analysis")
 
+        # Initialize session state for storing analysis results
+        if "yt_analysis_results" not in st.session_state:
+            st.session_state.yt_analysis_results = None
+
         col1, col2 = st.columns([1, 2])
 
         with col1:
@@ -280,7 +284,12 @@ def main():
                 if not success:
                     st.error(f"❌ Failed to fetch videos: {videos}")
                 else:
+                    logger.info(f"Fetched {videos}")
                     st.success(f"✅ Found {len(videos)} videos")
+
+                    # Store results in session state
+                    analysis_results = []
+
                     with st.expander("Video List"):
                         for i, video in enumerate(videos, 1):
                             st.write(f"{i}. {video['title']}")
@@ -318,7 +327,7 @@ def main():
                         st.write("**Step 3: AI Analysis**")
                         with st.spinner("Analyzing with AI..."):
                             success, analysis = youtube_agent.analyze_transcript(
-                                video["title"], transcript
+                                video["url"], video["title"], transcript
                             )
 
                         if not success:
@@ -328,44 +337,85 @@ def main():
 
                         st.success("✅ Analysis complete")
 
-                        # Display results
-                        st.write("**📋 Summary**")
-                        st.write(analysis.get("summary", "No summary available"))
+                        # Store in results
+                        analysis_results.append({"video": video, "analysis": analysis})
 
-                        # Stock mentions
-                        stocks = analysis.get("stocks_mentioned", [])
-                        if stocks:
-                            st.write(f"**📊 Stocks Mentioned: {len(stocks)}**")
-                            for stock in stocks:
-                                col_s1, col_s2, col_s3 = st.columns([1, 1, 3])
-                                with col_s1:
-                                    st.write(f"**{stock.get('symbol')}**")
-                                with col_s2:
-                                    rec = stock.get("recommendation", "N/A")
-                                    conf = stock.get("confidence", "N/A")
-                                    color = {
-                                        "BUY": "🟢",
-                                        "SELL": "🔴",
-                                        "HOLD": "🟡",
-                                    }.get(rec, "⚪")
-                                    st.write(f"{color} {rec}")
-                                    st.caption(f"Confidence: {conf}")
-                                with col_s3:
-                                    st.write("**Reasons:**")
-                                    reasons = stock.get("reasons", [])
-                                    for reason in reasons:
-                                        st.write(f"• {reason}")
+                    # Save to session state
+                    st.session_state.yt_analysis_results = analysis_results
+
+            # Display results from session state
+            if st.session_state.yt_analysis_results:
+                for result in st.session_state.yt_analysis_results:
+                    video = result["video"]
+                    analysis = result["analysis"]
+
+                    # Display results
+                    st.write("**📋 Summary**")
+                    st.write(analysis.get("summary", "No summary available"))
+
+                    # Stock mentions
+                    stocks = analysis.get("stocks_mentioned", [])
+                    if stocks:
+                        st.write(f"**📊 Stocks Mentioned: {len(stocks)}**")
+                        for stock in stocks:
+                            col_s1, col_s2, col_s3 = st.columns([1, 1, 3])
+                            with col_s1:
+                                st.write(f"**{stock.get('symbol')}**")
+                            with col_s2:
+                                rec = stock.get("recommendation", "N/A")
+                                conf = stock.get("confidence", "N/A")
+                                color = {
+                                    "BUY": "🟢",
+                                    "SELL": "🔴",
+                                    "HOLD": "🟡",
+                                }.get(rec, "⚪")
+                                st.write(f"{color} {rec}")
+                                st.caption(f"Confidence: {conf}")
+                            with col_s3:
+                                st.write("**Reasons:**")
+                                reasons = stock.get("reasons", [])
+                                for reason in reasons:
+                                    st.write(f"• {reason}")
+                    else:
+                        st.info("ℹ️ No stocks mentioned in this video")
+
+                    # Other insights
+                    insights = analysis.get("other_insights", [])
+                    if insights:
+                        with st.expander("💡 Other Insights"):
+                            for insight in insights:
+                                st.write(f"• {insight}")
+
+                    # Store analysis button
+                    store_button_key = f"store_{video['id']}"
+                    if st.button("💾 Store Analysis", key=store_button_key):
+                        # Fetch video metadata to get publish date
+                        with st.spinner("Fetching video date..."):
+                            success_meta, metadata = youtube_agent.get_video_metadata(
+                                video["id"]
+                            )
+
+                        if success_meta:
+                            # Convert upload_date from YYYYMMDD to ISO format
+                            upload_date = metadata.get("upload_date", "")
+                            if upload_date and len(upload_date) == 8:
+                                video_date = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:8]}"
+                                success, msg = youtube_agent.store_analysis(
+                                    video_url=video["url"],
+                                    video_title=video["title"],
+                                    video_date=video_date,
+                                    analysis=analysis,
+                                )
+                                if success:
+                                    st.success(f"✅ {msg}")
+                                else:
+                                    st.error(f"❌ {msg}")
+                            else:
+                                st.error("Invalid upload date format")
                         else:
-                            st.info("ℹ️ No stocks mentioned in this video")
+                            st.error(f"Could not fetch video date: {metadata}")
 
-                        # Other insights
-                        insights = analysis.get("other_insights", [])
-                        if insights:
-                            with st.expander("💡 Other Insights"):
-                                for insight in insights:
-                                    st.write(f"• {insight}")
-
-                        st.markdown("---")
+                    st.markdown("---")
 
     # TAB 4: Manual Transcript Entry
     with tab4:
@@ -428,6 +478,104 @@ def main():
                     st.code(key, language=None)
         else:
             st.info("No transcripts cached yet")
+
+    # TAB 5: Portfolio
+    with tab5:
+        st.header("📊 Portfolio - Analyzed Stocks")
+
+        # Get all analyzed stocks
+        analyzed_stocks = youtube_agent.get_all_analyzed_stocks()
+
+        if not analyzed_stocks:
+            st.info(
+                "No stocks analyzed yet. Analyze YouTube videos in the YouTube Analysis tab to build your portfolio."
+            )
+        else:
+            st.write(f"**{len(analyzed_stocks)} stocks tracked**")
+
+            # Stock selector
+            selected_stock = st.selectbox(
+                "Select Stock",
+                options=sorted(analyzed_stocks),
+                key="portfolio_stock_selector",
+            )
+
+            if selected_stock:
+                st.markdown("---")
+                st.subheader(f"{selected_stock} Analysis History")
+
+                # Get analysis for selected stock
+                success, mentions = youtube_agent.get_stock_analysis(selected_stock)
+
+                if not success:
+                    st.error(f"Error loading analysis: {mentions}")
+                elif not mentions:
+                    st.info("No mentions found")
+                else:
+                    # Sort by date (newest first)
+                    sorted_mentions = sorted(
+                        mentions, key=lambda x: x.get("date", ""), reverse=True
+                    )
+
+                    # Current status (based on most recent)
+                    latest = sorted_mentions[0]
+                    st.markdown("### Current Status")
+                    col_a, col_b, col_c = st.columns(3)
+                    with col_a:
+                        rec = latest.get("recommendation", "N/A")
+                        color = {"BUY": "🟢", "SELL": "🔴", "HOLD": "🟡"}.get(rec, "⚪")
+                        st.metric("Recommendation", f"{color} {rec}")
+                    with col_b:
+                        conf = latest.get("confidence", "N/A")
+                        st.metric("Confidence", conf)
+                    with col_c:
+                        st.metric("Total Mentions", len(sorted_mentions))
+
+                    st.markdown("---")
+                    st.markdown("### Mention History")
+
+                    # Display all mentions
+                    for i, mention in enumerate(sorted_mentions, 1):
+                        with st.expander(
+                            f"#{i} - {mention.get('date', 'Unknown date')[:10]} - {mention.get('video_title', 'Unknown')}"
+                        ):
+                            col_m1, col_m2 = st.columns([1, 2])
+
+                            with col_m1:
+                                rec = mention.get("recommendation", "N/A")
+                                color = {"BUY": "🟢", "SELL": "🔴", "HOLD": "🟡"}.get(
+                                    rec, "⚪"
+                                )
+                                st.write(f"**Recommendation:** {color} {rec}")
+                                st.write(
+                                    f"**Confidence:** {mention.get('confidence', 'N/A')}"
+                                )
+
+                                if mention.get("video_url"):
+                                    st.markdown(
+                                        f"[🎥 Watch Video]({mention['video_url']})"
+                                    )
+                                
+                                # Delete button
+                                delete_key = f"delete_{selected_stock}_{i}"
+                                if st.button("🗑️ Remove", key=delete_key, type="secondary"):
+                                    success, msg = youtube_agent.remove_mention(
+                                        selected_stock, mention.get("video_url")
+                                    )
+                                    if success:
+                                        st.success(f"✅ {msg}")
+                                        st.rerun()
+                                    else:
+                                        st.error(f"❌ {msg}")
+
+                            with col_m2:
+                                st.write("**Reasons:**")
+                                for reason in mention.get("reasons", []):
+                                    st.write(f"• {reason}")
+
+                                if mention.get("summary"):
+                                    st.write("**Summary:**")
+                                    st.caption(mention["summary"])
 
     # Footer
     st.markdown("---")
