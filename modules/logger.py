@@ -9,6 +9,11 @@ _logger = None
 _current_log_file = None
 
 
+def is_initialized():
+    """Check if the logger is initialized"""
+    return _logger is not None
+
+
 def init(module_name):
     """Initialize the logger with a module name"""
     global _module_name, _logger, _current_log_file
