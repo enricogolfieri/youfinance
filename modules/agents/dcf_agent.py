@@ -336,7 +336,7 @@ class DCFAgent(Agent):
 
             for year in range(1, projection_years + 1):
                 # Decline growth each year by AI's factor
-                year_growth = growth_rate * (1 - (year * growth_decline_factor))
+                year_growth = growth_rate  # * (1 - (year * growth_decline_factor))
                 # Don't let it go negative
                 year_growth = max(year_growth, 0)
                 next_fcf = last_fcf * (1 + year_growth)

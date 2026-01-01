@@ -4,6 +4,7 @@ import json
 import modules.logger as logger
 import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
+from modules.cache import Cache
 
 
 class YouTubeAgent:
@@ -11,6 +12,7 @@ class YouTubeAgent:
 
     def __init__(self, ai_engine):
         self.ai_engine = ai_engine
+        self.cache = Cache(cache_dir="cache/youtube_transcripts", file_extension=".txt")
 
     def get_channel_videos(self, channel_url, max_videos=5):
         """
@@ -20,8 +22,6 @@ class YouTubeAgent:
             tuple: (success: bool, videos: list or error_message: str)
         """
         try:
-            # Use yt-dlp to get video list
-
             ydl_opts = {
                 "quiet": True,
                 "extract_flat": True,
@@ -54,16 +54,15 @@ class YouTubeAgent:
             logger.error(f"Error fetching channel videos: {str(e)}")
             return False, f"Error fetching videos: {str(e)}"
 
-    def get_transcript(self, video_id):
+    def _fetch_transcript_from_youtube(self, video_id):
         """
-        Get transcript for a YouTube video
+        Fetch transcript from YouTube API (called by cache on miss)
 
         Returns:
             tuple: (success: bool, transcript: str or error_message: str)
         """
         try:
-
-            logger.info(f"Fetching transcript for video: {video_id}")
+            logger.info(f"Fetching transcript from YouTube API: {video_id}")
             api = YouTubeTranscriptApi()
             transcript_list = api.fetch(video_id)
 
@@ -76,6 +75,26 @@ class YouTubeAgent:
         except Exception as e:
             logger.error(f"Error fetching transcript: {str(e)}")
             return False, f"Error fetching transcript: {str(e)}"
+
+    def get_transcript(self, video_id):
+        """
+        Get transcript for a YouTube video (with caching)
+
+        Returns:
+            tuple: (success: bool, transcript: str or error_message: str)
+        """
+        return self.cache.get(
+            video_id, fetch_callback=self._fetch_transcript_from_youtube
+        )
+
+    def save_transcript(self, video_id, transcript):
+        """
+        Manually save a transcript to cache
+
+        Returns:
+            tuple: (success: bool, message: str)
+        """
+        return self.cache.set(video_id, transcript)
 
     def analyze_transcript(self, video_title, transcript):
         """

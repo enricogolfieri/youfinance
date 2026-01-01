@@ -36,8 +36,13 @@ def main():
             st.sidebar.error(f"❌ {key.description}")
 
     # Main tabs
-    tab1, tab2, tab3 = st.tabs(
-        ["👔 CEO Evaluation", "💰 DCF Valuation", "🎥 YouTube Analysis"]
+    tab1, tab2, tab3, tab4 = st.tabs(
+        [
+            "👔 CEO Evaluation",
+            "💰 DCF Valuation",
+            "🎥 YouTube Analysis",
+            "📝 Manual Transcript",
+        ]
     )
 
     # TAB 1: CEO Evaluation
@@ -361,6 +366,68 @@ def main():
                                     st.write(f"• {insight}")
 
                         st.markdown("---")
+
+    # TAB 4: Manual Transcript Entry
+    with tab4:
+        st.header("📝 Manual Transcript Entry")
+        st.write("Manually add transcripts to cache to avoid YouTube API limits")
+
+        col1, col2 = st.columns([1, 2])
+
+        with col1:
+            video_id = st.text_input(
+                "Video ID",
+                placeholder="e.g., dQw4w9WgXcQ",
+                help="YouTube video ID (not full URL)",
+                key="manual_video_id",
+            )
+
+            st.info("💡 Get video ID from URL: youtube.com/watch?v=**VIDEO_ID**")
+
+        with col2:
+            transcript_text = st.text_area(
+                "Transcript",
+                placeholder="Paste the transcript here...",
+                height=300,
+                help="Paste the full video transcript",
+            )
+
+            save_button = st.button("💾 Save to Cache", type="primary")
+
+            if save_button:
+                if not video_id:
+                    st.error("❌ Please enter a video ID")
+                elif not transcript_text:
+                    st.error("❌ Please paste a transcript")
+                else:
+                    # Save to cache via youtube_agent
+                    success, message = youtube_agent.save_transcript(
+                        video_id, transcript_text
+                    )
+
+                    if success:
+                        st.success(
+                            f"✅ Transcript saved! ({len(transcript_text)} characters)"
+                        )
+                        st.info(f"Video ID: {video_id}")
+                    else:
+                        st.error(f"❌ Failed to save: {message}")
+
+        # Show cached transcripts
+        st.markdown("---")
+        st.subheader("Cached Transcripts")
+
+        cached_keys = youtube_agent.cache.list_keys()
+
+        if cached_keys:
+            st.write(f"**{len(cached_keys)} transcripts cached:**")
+
+            cols = st.columns(3)
+            for i, key in enumerate(cached_keys):
+                with cols[i % 3]:
+                    st.code(key, language=None)
+        else:
+            st.info("No transcripts cached yet")
 
     # Footer
     st.markdown("---")
